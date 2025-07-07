@@ -38,20 +38,28 @@ async def createNewIssuse(new_issuse: NewIssuse):
 	return {"message" : "Задача добавленна"}
 
 @app.get("/issuse/{id}")
-async def read_issuse(id: str):
-    row = await conn.fetchrow('SELECT * FROM issuse WHERE key = $1', id)
+async def read_issuse(id: int):
+    fields = "id"
+    query = f'SELECT {fields} FROM issuse WHERE key = $1'
+    
+    row = await conn.fetchrow(query, id)
+    
     if row:
         return dict(row)
+    
     return {"error": "Задача не найдена"}
+
 
 @app.get("/issuse/key/{key}", response_model=NewIssuse)
 async def getIssueByKey(key: str):
-    try:
-        row = await conn.fetchrow('SELECT * FROM issuse WHERE key = $1', key)
-        if row is None:
-            return None
-        return NewIssuse(**row)
-    except SomeException as e:
-      print(f"Произошла ошибка: {e}")
-    finally:
-      pass
+    fields = "key"
+    query = f'SELECT {fields} FROM issuse WHERE key = $1'
+    
+    row = await conn.fetchrow(query, key)
+    
+    if row:
+        return dict(row)
+    
+    return {"error": "Задача не найдена"}
+
+    
