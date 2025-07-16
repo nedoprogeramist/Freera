@@ -1,57 +1,74 @@
-from fastapi import FastAPI
-import asyncio
+from fastapi import FastAPI, HTTPException
 import asyncpg
 from pydantic import BaseModel
-from sql-comands import migrations
+from enum import Enum
+from typing import Optional
+
 app = FastAPI()
 
-async def main():  
-  conn = await asyncpg.connect(user='posstgres', password='password', database='fastapi-postgres', host='127.0.0.1')
-  return conn
-  
-asyncio.run(main())
+class IssueStatus(str, Enum):
+    TODO = "todo"
+    IN_PROGRESS = "in_progress"
+    Review = "Review"
+    QA = "qa"
+    Done = "done"
+    CLOSED = "closed"
 
-async def createTable(conn):
-    try:
-      for command in migrations:
-        await conn.execute(command)
-    except Exception as e:
-        print(f"Ошибка при выполнении миграции: {e}")
-    finally:
-        await conn.close()
+class NewIssue(BaseModel):
+    key: str
+    name: str
+    status: IssueStatus
+    description: str
 
-asyncio.run(createTable())
+class IssueResponse(NewIssue):
+    id: int
 
-class NewIssuse(BaseModel):
-	key: str
-	name: str
-	status: issuse_status
-	description: str
+@app.on_event("startup")
+async def startup_event():
+    app.state.conn = await asyncpg.connect(
+        user='postgres',
+        password='password',
+        database='fastapi-postgres',
+        host='127.0.0.1'
+    )
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    await app.state.conn.close()
+
+@app.post("/issue", response_model=IssueResponse)
+async def create_new_issue(new_issue: NewIssue):
+    conn = app.state.conn
+    record = await conn.fetchrow(
+        '''
+        INSERT INTO issue(key, name, status, description)
+        VALUES($1, $2, $3, $4)
+        RETURNING id, key, name, status, description
+        ''',
+        new_issue.key, new_issue.name, new_issue.status.value, new_issue.description
+    )
+    return dict(record)
+
+@app.get("/issue/{id}", response_model=IssueResponse)
+async def read_issue(id: int):
+    conn = app.state.conn
+    row = await conn.fetchrow(
+        'SELECT id, key, name, status, description FROM issue WHERE id = $1',
+        id
+    )
     
-@app.post("/issuse")
-async def createNewIssuse(new_issuse: NewIssuse):
-	
-	await conn.execute('''
-        INSERT INTO issuse(key, name, status, description) VALUES($1, $2, $3, $4,)
-    ''',
-    new_issuse.key, new_issuse.name, new_issuse.status, new_issuse.description )
-	return {"message" : "Задача добавленна"}
+    if not row:
+        raise HTTPException(status_code=404, detail="Задача не найдена")
+    return dict(row)
 
-@app.get("/issuse/{id}")
-async def read_issuse(id: str):
-    row = await conn.fetchrow('SELECT * FROM issuse WHERE key = $1', id)
-    if row:
-        return dict(row)
-    return {"error": "Задача не найдена"}
-
-@app.get("/issuse/key/{key}", response_model=NewIssuse)
-async def getIssueByKey(key: str):
-    try:
-        row = await conn.fetchrow('SELECT * FROM issuse WHERE key = $1', key)
-        if row is None:
-            return None
-        return NewIssuse(**row)
-    except SomeException as e:
-      print(f"Произошла ошибка: {e}")
-    finally:
-      pass
+@app.get("/issue/key/{key}", response_model=IssueResponse)
+async def get_issue_by_key(key: str):
+    conn = app.state.conn
+    row = await conn.fetchrow(
+        'SELECT id, key, name, status, description FROM issue WHERE key = $1',
+        key
+    )
+    
+    if not row:
+        raise HTTPException(status_code=404, detail="Задача не найдена")
+    return dict(row)
