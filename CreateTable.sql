@@ -1,7 +1,7 @@
 Создание типа данных для сохранения статуса
 ========================================
 
-CREATE TYPE issue_status AS ENUM ( 'TODO', 'In Progress', 'Review', 'QA', 'Done', 'Closed' );
+CREATE TYPE IF NOT EXISTS issue_status AS ENUM ( 'TODO', 'In Progress', 'Review', 'QA', 'Done', 'Closed' );
 
 ========================================
 
